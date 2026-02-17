@@ -80,53 +80,69 @@ class CostTracker: ObservableObject {
     }
 }
 
+// MARK: - Theme
+
+struct Theme {
+    // Apple-style semantic colors for dark vibrancy
+    static let primary = Color.white.opacity(0.85)
+    static let secondary = Color.white.opacity(0.55)
+    static let tertiary = Color.white.opacity(0.35)
+    static let quaternary = Color.white.opacity(0.18)
+    static let separator = Color.white.opacity(0.12)
+    static let accent = Color.accentColor
+
+    // Bar chart gradient
+    static func barColor(index: Int, total: Int) -> Color {
+        let progress = total > 1 ? Double(total - 1 - index) / Double(total - 1) : 0.5
+        return Color(
+            hue: 0.38,  // green-teal
+            saturation: 0.55 + 0.2 * progress,
+            brightness: 0.55 + 0.25 * progress
+        )
+    }
+}
+
 // MARK: - Daily Bar Chart
 
 struct DailyBarChart: View {
     let days: [(String, Double)]
-    var scale: CGFloat = 1.0
+    let s: (CGFloat) -> CGFloat
 
     var body: some View {
         let maxCost = days.map(\.1).max() ?? 1
 
-        VStack(alignment: .leading, spacing: 3) {
-            Text("DAILY")
-                .font(.system(size: s(8), weight: .semibold))
-                .foregroundColor(.white.opacity(0.3))
-                .tracking(1)
+        VStack(alignment: .leading, spacing: s(4)) {
+            Text("Daily Spend")
+                .font(.system(size: s(9), weight: .medium))
+                .foregroundColor(Theme.tertiary)
+                .textCase(.uppercase)
+                .tracking(0.5)
 
             ForEach(Array(days.enumerated()), id: \.offset) { index, entry in
                 let (day, cost) = entry
                 let fraction = maxCost > 0 ? cost / maxCost : 0
-                let greenColor = Color(
-                    red: 0.1,
-                    green: 0.45 + 0.35 * Double(days.count - 1 - index) / max(Double(days.count - 1), 1),
-                    blue: 0.2
-                )
 
-                HStack(spacing: 6) {
+                HStack(spacing: s(6)) {
                     Text(shortDate(day))
-                        .font(.system(size: s(9), design: .monospaced))
-                        .foregroundColor(.white.opacity(0.5))
+                        .font(.system(size: s(9), weight: .medium, design: .monospaced))
+                        .foregroundColor(Theme.secondary)
                         .frame(width: s(36), alignment: .leading)
 
                     GeometryReader { geo in
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(greenColor)
-                            .frame(width: max(2, geo.size.width * fraction))
+                        RoundedRectangle(cornerRadius: s(2.5))
+                            .fill(Theme.barColor(index: index, total: days.count))
+                            .frame(width: max(s(3), geo.size.width * fraction))
                     }
-                    .frame(height: s(10))
+                    .frame(height: s(12))
 
                     Text("$\(cost, specifier: "%.2f")")
-                        .font(.system(size: s(9), design: .monospaced))
-                        .foregroundColor(.white.opacity(0.5))
+                        .font(.system(size: s(9), weight: .medium, design: .monospaced))
+                        .foregroundColor(Theme.secondary)
                         .frame(width: s(50), alignment: .trailing)
                 }
             }
         }
     }
-
-    func s(_ size: CGFloat) -> CGFloat { size * scale }
 
     func shortDate(_ iso: String) -> String {
         let parts = iso.split(separator: "-")
@@ -135,173 +151,235 @@ struct DailyBarChart: View {
     }
 }
 
+// MARK: - Service Row
+
+struct ServiceRow: View {
+    let symbol: String  // SF Symbol name
+    let label: String
+    let value: Double
+    let detail: String
+    let color: Color
+    let s: (CGFloat) -> CGFloat
+
+    var body: some View {
+        HStack(spacing: s(6)) {
+            Image(systemName: symbol)
+                .font(.system(size: s(10), weight: .medium))
+                .foregroundColor(color)
+                .frame(width: s(16))
+
+            Text(label)
+                .font(.system(size: s(11), weight: .medium))
+                .foregroundColor(Theme.primary)
+
+            Spacer()
+
+            Text(detail)
+                .font(.system(size: s(9)))
+                .foregroundColor(Theme.tertiary)
+                .padding(.trailing, s(4))
+
+            Text("$\(value, specifier: "%.2f")")
+                .font(.system(size: s(11), weight: .semibold, design: .monospaced))
+                .foregroundColor(Theme.primary)
+        }
+    }
+}
+
+// MARK: - Sub-detail Row
+
+struct SubRow: View {
+    let label: String
+    let value: String
+    let s: (CGFloat) -> CGFloat
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.system(size: s(9), weight: .regular, design: .monospaced))
+                .foregroundColor(Theme.tertiary)
+                .padding(.leading, s(22))
+            Spacer()
+            Text(value)
+                .font(.system(size: s(9), weight: .regular, design: .monospaced))
+                .foregroundColor(Theme.tertiary)
+        }
+    }
+}
+
 // MARK: - Floating Widget View
 
 struct WidgetView: View {
     @ObservedObject var tracker: CostTracker
     @State private var isExpanded = false
+    @State private var isHoveringRefresh = false
     @AppStorage("textScale") private var textScale: Double = 1.0
+
+    func s(_ size: CGFloat) -> CGFloat { size * CGFloat(textScale) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Compact pill - always visible
-            HStack(spacing: 6) {
-                Text("\u{1F99E}")
-                    .font(.system(size: s(11)))
-                Text("$\(tracker.data?.grand_total ?? 0, specifier: "%.2f")")
-                    .font(.system(size: s(13), weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
-
-                Text("|")
-                    .font(.system(size: s(11)))
-                    .foregroundColor(.white.opacity(0.3))
-
-                Text("today $\(tracker.data?.anthropic.today ?? 0, specifier: "%.2f")")
-                    .font(.system(size: s(10), design: .monospaced))
-                    .foregroundColor(.white.opacity(0.6))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
-            .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() } }
+            // MARK: Compact pill
+            compactPill
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        isExpanded.toggle()
+                    }
+                }
 
             if isExpanded, let data = tracker.data {
-                Divider().background(Color.white.opacity(0.2))
+                Divider().overlay(Theme.separator)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    // Anthropic breakdown
-                    CostRow(icon: "\u{1F9E0}", label: "Anthropic", value: data.anthropic.total, detail: "\(data.anthropic.requests) reqs", scale: CGFloat(textScale))
-
-                    // Model breakdown
-                    ForEach(Array(data.anthropic.by_model.sorted(by: { $0.value > $1.value }).prefix(3)), id: \.key) { model, cost in
-                        if cost > 0 {
-                            HStack {
-                                Text("  ")
-                                Text(shortModelName(model))
-                                    .font(.system(size: s(9), design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.5))
-                                Spacer()
-                                Text("$\(cost, specifier: "%.2f")")
-                                    .font(.system(size: s(9), design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                        }
-                    }
-
-                    // Twilio with calls + number breakdown
-                    CostRow(icon: "\u{1F4DE}", label: "Twilio", value: data.twilio.total, detail: "\(data.twilio.calls) calls", scale: CGFloat(textScale))
-                    HStack {
-                        Text("  ")
-                        Text("calls")
-                            .font(.system(size: s(9), design: .monospaced))
-                            .foregroundColor(.white.opacity(0.5))
-                        Spacer()
-                        Text("$\(data.twilio.call_cost, specifier: "%.2f")")
-                            .font(.system(size: s(9), design: .monospaced))
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                    HStack {
-                        Text("  ")
-                        Text("number")
-                            .font(.system(size: s(9), design: .monospaced))
-                            .foregroundColor(.white.opacity(0.5))
-                        Spacer()
-                        Text("$\(data.twilio.number_cost, specifier: "%.2f")")
-                            .font(.system(size: s(9), design: .monospaced))
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-
-                    // Replicate
-                    CostRow(icon: "\u{1F3A4}", label: "Replicate", value: data.replicate.total, detail: "\(data.replicate.runs) runs", scale: CGFloat(textScale))
-
-                    Divider().background(Color.white.opacity(0.2))
-
-                    // Daily bar chart (last 5 days)
-                    let days = Array(data.anthropic.by_day.sorted(by: { $0.key > $1.key }).prefix(5).reversed())
-                    DailyBarChart(days: days, scale: CGFloat(textScale))
-
-                    Divider().background(Color.white.opacity(0.2))
-
-                    // Footer
-                    HStack {
-                        Text("Updated \(timeAgo(tracker.lastUpdate))")
-                            .font(.system(size: s(8)))
-                            .foregroundColor(.white.opacity(0.3))
-                        Spacer()
-                        Button(action: { tracker.refresh() }) {
-                            Text("\u{21BB}")
-                                .font(.system(size: s(10)))
-                                .foregroundColor(.white.opacity(0.4))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.top, 2)
-
-                    // Text size selector
-                    Divider().background(Color.white.opacity(0.2))
-                    HStack {
-                        Text("Text size")
-                            .font(.system(size: s(8)))
-                            .foregroundColor(.white.opacity(0.3))
-                        Spacer()
-                        Button(action: { textScale = max(0.5, textScale - 0.1) }) {
-                            Text("\u{2212}")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundColor(textScale <= 0.5 ? .white.opacity(0.15) : .white.opacity(0.5))
-                                .frame(width: 20, height: 18)
-                                .background(Color.white.opacity(0.08))
-                                .cornerRadius(4)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(textScale <= 0.5)
-
-                        Text("\(Int(round(textScale * 100)))%")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.4))
-                            .frame(width: 32)
-
-                        Button(action: { textScale = min(3.0, textScale + 0.1) }) {
-                            Text("+")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundColor(textScale >= 3.0 ? .white.opacity(0.15) : .white.opacity(0.5))
-                                .frame(width: 20, height: 18)
-                                .background(Color.white.opacity(0.08))
-                                .cornerRadius(4)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(textScale >= 3.0)
-                    }
-                    .padding(.top, 2)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                expandedContent(data: data)
+                    .padding(.horizontal, s(12))
+                    .padding(.vertical, s(10))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .frame(minWidth: 180, maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.black.opacity(0.85))
-                .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
-        )
+        .frame(minWidth: 200, maxWidth: .infinity)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: s(12)))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: s(12))
+                .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5)
         )
-        .overlay(alignment: .topLeading) {
-            if isExpanded { ResizeHandle(corner: .topLeading).padding(4) }
-        }
-        .overlay(alignment: .topTrailing) {
-            if isExpanded { ResizeHandle(corner: .topTrailing).padding(4) }
-        }
-        .overlay(alignment: .bottomLeading) {
-            if isExpanded { ResizeHandle(corner: .bottomLeading).padding(4) }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if isExpanded { ResizeHandle(corner: .bottomTrailing).padding(4) }
-        }
+        .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
+        .shadow(color: .black.opacity(0.08), radius: 2, x: 0, y: 1)
     }
 
-    func s(_ size: CGFloat) -> CGFloat { size * CGFloat(textScale) }
+    // MARK: - Compact Pill
+
+    var compactPill: some View {
+        HStack(spacing: s(8)) {
+            // Subtle colored dot instead of emoji
+            Circle()
+                .fill(Color.green.opacity(0.8))
+                .frame(width: s(7), height: s(7))
+
+            Text("$\(tracker.data?.grand_total ?? 0, specifier: "%.2f")")
+                .font(.system(size: s(14), weight: .semibold, design: .rounded))
+                .foregroundColor(Theme.primary)
+
+            Rectangle()
+                .fill(Theme.quaternary)
+                .frame(width: 1, height: s(14))
+
+            Text("today $\(tracker.data?.anthropic.today ?? 0, specifier: "%.2f")")
+                .font(.system(size: s(10), weight: .medium, design: .monospaced))
+                .foregroundColor(Theme.secondary)
+
+            Spacer(minLength: 0)
+
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.system(size: s(8), weight: .semibold))
+                .foregroundColor(Theme.tertiary)
+        }
+        .padding(.horizontal, s(12))
+        .padding(.vertical, s(8))
+    }
+
+    // MARK: - Expanded Content
+
+    func expandedContent(data: CostData) -> some View {
+        VStack(alignment: .leading, spacing: s(6)) {
+            // Services
+            ServiceRow(
+                symbol: "brain.head.profile",
+                label: "Anthropic",
+                value: data.anthropic.total,
+                detail: "\(data.anthropic.requests) reqs",
+                color: Color(hue: 0.08, saturation: 0.65, brightness: 0.95),
+                s: s
+            )
+
+            // Model sub-rows
+            ForEach(
+                Array(data.anthropic.by_model.sorted(by: { $0.value > $1.value }).prefix(3)),
+                id: \.key
+            ) { model, cost in
+                if cost > 0 {
+                    SubRow(label: shortModelName(model), value: "$" + String(format: "%.2f", cost), s: s)
+                }
+            }
+
+            Divider().overlay(Theme.separator).padding(.vertical, s(2))
+
+            ServiceRow(
+                symbol: "phone.fill",
+                label: "Twilio",
+                value: data.twilio.total,
+                detail: "\(data.twilio.calls) calls",
+                color: Color(hue: 0.6, saturation: 0.5, brightness: 0.9),
+                s: s
+            )
+            SubRow(label: "calls", value: "$" + String(format: "%.2f", data.twilio.call_cost), s: s)
+            SubRow(label: "number", value: "$" + String(format: "%.2f", data.twilio.number_cost), s: s)
+
+            Divider().overlay(Theme.separator).padding(.vertical, s(2))
+
+            ServiceRow(
+                symbol: "waveform",
+                label: "Replicate",
+                value: data.replicate.total,
+                detail: "\(data.replicate.runs) runs",
+                color: Color(hue: 0.8, saturation: 0.45, brightness: 0.85),
+                s: s
+            )
+
+            Divider().overlay(Theme.separator).padding(.vertical, s(2))
+
+            // Daily bar chart
+            let days = Array(data.anthropic.by_day.sorted(by: { $0.key > $1.key }).prefix(5).reversed())
+            DailyBarChart(days: days, s: s)
+
+            Divider().overlay(Theme.separator).padding(.vertical, s(2))
+
+            // Footer
+            HStack(spacing: s(8)) {
+                Text("Updated \(timeAgo(tracker.lastUpdate))")
+                    .font(.system(size: s(9)))
+                    .foregroundColor(Theme.tertiary)
+
+                Spacer()
+
+                // Text scale controls
+                Group {
+                    Button(action: { withAnimation(.easeOut(duration: 0.15)) { textScale = max(0.5, textScale - 0.1) } }) {
+                        Image(systemName: "textformat.size.smaller")
+                            .font(.system(size: s(9), weight: .medium))
+                            .foregroundColor(textScale <= 0.5 ? Theme.quaternary : Theme.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(textScale <= 0.5)
+
+                    Text("\(Int(round(textScale * 100)))%")
+                        .font(.system(size: s(8), weight: .medium, design: .monospaced))
+                        .foregroundColor(Theme.tertiary)
+                        .frame(width: s(30))
+
+                    Button(action: { withAnimation(.easeOut(duration: 0.15)) { textScale = min(3.0, textScale + 0.1) } }) {
+                        Image(systemName: "textformat.size.larger")
+                            .font(.system(size: s(9), weight: .medium))
+                            .foregroundColor(textScale >= 3.0 ? Theme.quaternary : Theme.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(textScale >= 3.0)
+                }
+
+                Rectangle()
+                    .fill(Theme.quaternary)
+                    .frame(width: 1, height: s(12))
+
+                Button(action: { tracker.refresh() }) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: s(9), weight: .medium))
+                        .foregroundColor(isHoveringRefresh ? Theme.primary : Theme.secondary)
+                }
+                .buttonStyle(.plain)
+                .onHover { isHoveringRefresh = $0 }
+            }
+        }
+    }
 
     func shortModelName(_ name: String) -> String {
         if name.contains("opus") { return "Opus 4.6" }
@@ -319,67 +397,11 @@ struct WidgetView: View {
     }
 }
 
-struct CostRow: View {
-    let icon: String
-    let label: String
-    let value: Double
-    let detail: String
-    var scale: CGFloat = 1.0
-
-    var body: some View {
-        HStack {
-            Text(icon).font(.system(size: s(10)))
-            Text(label)
-                .font(.system(size: s(10), weight: .medium))
-                .foregroundColor(.white.opacity(0.8))
-            Spacer()
-            Text(detail)
-                .font(.system(size: s(9)))
-                .foregroundColor(.white.opacity(0.4))
-            Text("$\(value, specifier: "%.2f")")
-                .font(.system(size: s(10), weight: .semibold, design: .monospaced))
-                .foregroundColor(.white)
-        }
-    }
-
-    func s(_ size: CGFloat) -> CGFloat { size * scale }
-}
-
-// MARK: - Resize Handle
+// MARK: - Draggable + Resizable Window
 
 enum ResizeCorner {
     case topLeading, topTrailing, bottomLeading, bottomTrailing
 }
-
-struct ResizeHandle: View {
-    let corner: ResizeCorner
-
-    var body: some View {
-        ZStack {
-            Path { path in
-                for i in 0..<3 {
-                    let offset = CGFloat(i) * 4
-                    path.move(to: CGPoint(x: 12 - offset, y: 12))
-                    path.addLine(to: CGPoint(x: 12, y: 12 - offset))
-                }
-            }
-            .stroke(Color.white.opacity(0.25), lineWidth: 1)
-            .rotationEffect(rotationForCorner)
-        }
-        .frame(width: 12, height: 12)
-    }
-
-    var rotationForCorner: Angle {
-        switch corner {
-        case .bottomTrailing: return .zero
-        case .bottomLeading: return .degrees(90)
-        case .topLeading: return .degrees(180)
-        case .topTrailing: return .degrees(270)
-        }
-    }
-}
-
-// MARK: - Draggable Window
 
 class DraggableWindow: NSWindow {
     var initialLocation: NSPoint?
@@ -388,7 +410,7 @@ class DraggableWindow: NSWindow {
     var resizeStartMouse: NSPoint?
 
     func cornerAt(_ loc: NSPoint) -> ResizeCorner? {
-        let zone: CGFloat = 18
+        let zone: CGFloat = 20
         let w = frame.width, h = frame.height
         if loc.x < zone && loc.y > h - zone { return .topLeading }
         if loc.x > w - zone && loc.y > h - zone { return .topTrailing }
@@ -397,17 +419,15 @@ class DraggableWindow: NSWindow {
         return nil
     }
 
-    func cursorForCorner(_ corner: ResizeCorner) -> NSCursor {
-        switch corner {
-        case .topLeading, .bottomTrailing: return NSCursor(image: NSCursor.arrow.image, hotSpot: .zero)
-        case .topTrailing, .bottomLeading: return NSCursor(image: NSCursor.arrow.image, hotSpot: .zero)
-        }
-    }
-
     override func mouseMoved(with event: NSEvent) {
         let loc = event.locationInWindow
-        if cornerAt(loc) != nil {
-            NSCursor.crosshair.set()
+        if let corner = cornerAt(loc) {
+            switch corner {
+            case .topLeading, .bottomTrailing:
+                NSCursor(image: makeCursorImage(type: "nwse"), hotSpot: NSPoint(x: 8, y: 8)).set()
+            case .topTrailing, .bottomLeading:
+                NSCursor(image: makeCursorImage(type: "nesw"), hotSpot: NSPoint(x: 8, y: 8)).set()
+            }
         } else {
             NSCursor.openHand.set()
         }
@@ -424,9 +444,7 @@ class DraggableWindow: NSWindow {
     override func mouseDown(with event: NSEvent) {
         let loc = event.locationInWindow
         activeCorner = cornerAt(loc)
-
         if activeCorner != nil {
-            NSCursor.crosshair.set()
             resizeStartFrame = frame
             resizeStartMouse = convertPoint(toScreen: loc)
         } else {
@@ -440,52 +458,60 @@ class DraggableWindow: NSWindow {
             let cm = convertPoint(toScreen: event.locationInWindow)
             let dx = cm.x - sm.x
             let dy = cm.y - sm.y
-            var newX = sf.origin.x
-            var newY = sf.origin.y
-            var newW = sf.width
-            var newH = sf.height
+            var newX = sf.origin.x, newY = sf.origin.y
+            var newW = sf.width, newH = sf.height
 
             switch corner {
             case .bottomTrailing:
-                newW = sf.width + dx
-                newH = sf.height - dy
-                newY = sf.origin.y + dy
+                newW = sf.width + dx; newH = sf.height - dy; newY = sf.origin.y + dy
             case .bottomLeading:
-                newW = sf.width - dx
-                newX = sf.origin.x + dx
-                newH = sf.height - dy
-                newY = sf.origin.y + dy
+                newW = sf.width - dx; newX = sf.origin.x + dx; newH = sf.height - dy; newY = sf.origin.y + dy
             case .topTrailing:
-                newW = sf.width + dx
-                newH = sf.height + dy
+                newW = sf.width + dx; newH = sf.height + dy
             case .topLeading:
-                newW = sf.width - dx
-                newX = sf.origin.x + dx
-                newH = sf.height + dy
+                newW = sf.width - dx; newX = sf.origin.x + dx; newH = sf.height + dy
             }
 
-            newW = max(180, newW)
-            newH = max(40, newH)
+            newW = max(200, newW); newH = max(40, newH)
             setFrame(NSRect(x: newX, y: newY, width: newW, height: newH), display: true)
         } else if let initial = initialLocation {
-            let screenLoc = event.locationInWindow
+            let cur = event.locationInWindow
             let origin = frame.origin
-            setFrameOrigin(NSPoint(
-                x: origin.x + (screenLoc.x - initial.x),
-                y: origin.y + (screenLoc.y - initial.y)
-            ))
+            setFrameOrigin(NSPoint(x: origin.x + (cur.x - initial.x), y: origin.y + (cur.y - initial.y)))
         }
     }
 
     override func mouseUp(with event: NSEvent) {
-        activeCorner = nil
-        initialLocation = nil
-        let loc = event.locationInWindow
-        if cornerAt(loc) != nil {
-            NSCursor.crosshair.set()
+        activeCorner = nil; initialLocation = nil
+        mouseMoved(with: event)
+    }
+
+    // Generates a simple resize cursor image
+    func makeCursorImage(type: String) -> NSImage {
+        let size = NSSize(width: 16, height: 16)
+        let img = NSImage(size: size)
+        img.lockFocus()
+        let ctx = NSGraphicsContext.current!.cgContext
+        ctx.setStrokeColor(NSColor.white.cgColor)
+        ctx.setLineWidth(1.5)
+        ctx.setLineCap(.round)
+        if type == "nwse" {
+            ctx.move(to: CGPoint(x: 3, y: 13)); ctx.addLine(to: CGPoint(x: 13, y: 3))
+            // arrowheads
+            ctx.move(to: CGPoint(x: 3, y: 13)); ctx.addLine(to: CGPoint(x: 7, y: 13))
+            ctx.move(to: CGPoint(x: 3, y: 13)); ctx.addLine(to: CGPoint(x: 3, y: 9))
+            ctx.move(to: CGPoint(x: 13, y: 3)); ctx.addLine(to: CGPoint(x: 9, y: 3))
+            ctx.move(to: CGPoint(x: 13, y: 3)); ctx.addLine(to: CGPoint(x: 13, y: 7))
         } else {
-            NSCursor.openHand.set()
+            ctx.move(to: CGPoint(x: 13, y: 13)); ctx.addLine(to: CGPoint(x: 3, y: 3))
+            ctx.move(to: CGPoint(x: 13, y: 13)); ctx.addLine(to: CGPoint(x: 9, y: 13))
+            ctx.move(to: CGPoint(x: 13, y: 13)); ctx.addLine(to: CGPoint(x: 13, y: 9))
+            ctx.move(to: CGPoint(x: 3, y: 3)); ctx.addLine(to: CGPoint(x: 7, y: 3))
+            ctx.move(to: CGPoint(x: 3, y: 3)); ctx.addLine(to: CGPoint(x: 3, y: 7))
         }
+        ctx.strokePath()
+        img.unlockFocus()
+        return img
     }
 }
 
@@ -497,11 +523,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Create floating draggable window
         let contentView = WidgetView(tracker: tracker)
 
         window = DraggableWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 240, height: 40),
+            contentRect: NSRect(x: 0, y: 0, width: 260, height: 40),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -514,20 +539,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .stationary]
         window.hasShadow = false
-        window.isMovableByWindowBackground = false  // we handle drag ourselves
+        window.isMovableByWindowBackground = false
+        window.acceptsMouseMovedEvents = true
 
-        // Position in top-right corner
+        // Position top-right
         if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let x = screenFrame.maxX - 250
-            let y = screenFrame.maxY - 50
-            window.setFrameOrigin(NSPoint(x: x, y: y))
+            let sf = screen.visibleFrame
+            window.setFrameOrigin(NSPoint(x: sf.maxX - 270, y: sf.maxY - 50))
         }
 
-        window.acceptsMouseMovedEvents = true
         window.orderFront(nil)
 
-        // Track mouse for cursor changes
+        // Mouse tracking
         let trackingArea = NSTrackingArea(
             rect: .zero,
             options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
@@ -536,25 +559,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         window.contentView?.addTrackingArea(trackingArea)
 
-        // Menu bar item
+        // Menu bar
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        updateMenuBarTitle()
-
-        // Periodic UI sync
+        updateMenuBar()
         Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            self?.updateMenuBarTitle()
-            self?.resizeWindow()
+            self?.updateMenuBar()
         }
-
-        // Setup menu with breakdown
-        rebuildMenu()
     }
 
-    func updateMenuBarTitle() {
+    func updateMenuBar() {
         if let data = tracker.data {
-            statusItem?.button?.title = "\u{1F99E} $\(String(format: "%.2f", data.grand_total))"
+            statusItem?.button?.title = "$\(String(format: "%.2f", data.grand_total))"
         } else {
-            statusItem?.button?.title = "\u{1F99E} ..."
+            statusItem?.button?.title = "..."
         }
         rebuildMenu()
     }
@@ -568,30 +585,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(header)
             menu.addItem(NSMenuItem.separator())
 
-            let anthropic = NSMenuItem(title: "\u{1F9E0} Anthropic: $\(String(format: "%.2f", data.anthropic.total))", action: nil, keyEquivalent: "")
-            anthropic.isEnabled = false
-            menu.addItem(anthropic)
-
-            for (model, cost) in data.anthropic.by_model.sorted(by: { $0.value > $1.value }).prefix(3) where cost > 0 {
-                let item = NSMenuItem(title: "    \(shortModelName(model)): $\(String(format: "%.2f", cost))", action: nil, keyEquivalent: "")
+            let items: [(String, String, Double)] = [
+                ("brain.head.profile", "Anthropic", data.anthropic.total),
+                ("phone.fill", "Twilio", data.twilio.total),
+                ("waveform", "Replicate", data.replicate.total)
+            ]
+            for (_, label, cost) in items {
+                let item = NSMenuItem(title: "\(label): $\(String(format: "%.2f", cost))", action: nil, keyEquivalent: "")
                 item.isEnabled = false
                 menu.addItem(item)
             }
 
-            let twilio = NSMenuItem(title: "\u{1F4DE} Twilio: $\(String(format: "%.2f", data.twilio.total)) (\(data.twilio.calls) calls)", action: nil, keyEquivalent: "")
-            twilio.isEnabled = false
-            menu.addItem(twilio)
-
-            let replicate = NSMenuItem(title: "\u{1F3A4} Replicate: $\(String(format: "%.2f", data.replicate.total)) (\(data.replicate.runs) runs)", action: nil, keyEquivalent: "")
-            replicate.isEnabled = false
-            menu.addItem(replicate)
-
             menu.addItem(NSMenuItem.separator())
-
             let today = NSMenuItem(title: "Today: $\(String(format: "%.2f", data.anthropic.today))", action: nil, keyEquivalent: "")
             today.isEnabled = false
             menu.addItem(today)
-
             menu.addItem(NSMenuItem.separator())
         }
 
@@ -601,29 +609,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.menu = menu
     }
 
-    func shortModelName(_ name: String) -> String {
-        if name.contains("opus") { return "Opus 4.6" }
-        if name.contains("sonnet-4") || name.contains("sonnet4") { return "Sonnet 4" }
-        if name.contains("sonnet") { return "Sonnet 3.5" }
-        if name.contains("gemini") { return "Gemini" }
-        return String(name.prefix(20))
-    }
-
-    func resizeWindow() {
-        if let contentView = window.contentView {
-            let size = contentView.fittingSize
-            var frame = window.frame
-            let oldHeight = frame.height
-            frame.size.height = size.height
-            frame.size.width = size.width
-            frame.origin.y -= (size.height - oldHeight)
-            window.setFrame(frame, display: true, animate: true)
-        }
-    }
-
-    @objc func refreshData() {
-        tracker.refresh()
-    }
+    @objc func refreshData() { tracker.refresh() }
 }
 
 // MARK: - Main
