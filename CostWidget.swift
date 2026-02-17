@@ -154,7 +154,9 @@ struct WidgetView: View {
     func expandedContent(data: CostData) -> some View {
         VStack(alignment: .leading, spacing: s(6)) {
             if data.openrouter.total > 0 {
-                ServiceRow(symbol: "network", label: "OpenRouter", value: data.openrouter.total, detail: "\(data.openrouter.requests) reqs", color: Color(hue: 0.55, saturation: 0.6, brightness: 0.9), s: s)
+                let topModel = data.openrouter.by_model.first?.key ?? "OpenRouter"
+                let displayName = shortModelName(topModel)
+                ServiceRow(symbol: "network", label: displayName, value: data.openrouter.total, detail: "\(data.openrouter.requests) reqs", color: Color(hue: 0.55, saturation: 0.6, brightness: 0.9), s: s)
                 Divider().overlay(Theme.separator).padding(.vertical, s(2))
             }
             ServiceRow(symbol: "brain.head.profile", label: "Anthropic", value: data.anthropic.total, detail: "\(data.anthropic.requests) reqs", color: Color(hue: 0.08, saturation: 0.65, brightness: 0.95), s: s)
@@ -166,12 +168,17 @@ struct WidgetView: View {
     }
 
     func shortModelName(_ name: String) -> String {
+        // Check specific patterns first
         if name.contains("sonnet-4") || name.contains("sonnet4") { return "Sonnet 4" }
         if name.contains("opus") { return "Opus 4.6" }
         if name.contains("sonnet") { return "Sonnet 3.5" }
+        if name.contains("kimi-k2.5") { return "Kimi K2.5" }
         if name.contains("kimi") { return "Kimi" }
         if name.contains("gemini") { return "Gemini" }
-        return String(name.prefix(15))
+        // Strip provider prefix for display
+        let cleanName = name.replacingOccurrences(of: "moonshotai/", with: "")
+                           .replacingOccurrences(of: "openrouter/", with: "")
+        return String(cleanName.prefix(20))
     }
 }
 
